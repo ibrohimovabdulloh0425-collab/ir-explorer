@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IR Explorer — Xalqaro tahlil platformasi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,650&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --ink: #081018;
+      --panel: rgba(14, 24, 38, 0.92);
+      --line: #2a3b52;
+      --text: #eef3fb;
+      --muted: #93a4bb;
+      --brass: #d4b483;
+      --blue: #6ea8ff;
+      --ok: #3ecf8e;
+      --warn: #e0b04a;
+      --bad: #ef6b6b;
+      --shadow: 0 24px 60px rgba(0,0,0,.45);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 600px at 10% -10%, #163152, transparent), var(--ink);
+      color: var(--text);
+      font-family: "Instrument Sans", system-ui, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+    }
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand h1 {
+      margin: 0;
+      font-family: Fraunces, serif;
+      font-size: 22px;
+      font-weight: 650;
+    }
+    .brand span { color: var(--brass); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    .actions { display: flex; align-items: center; gap: 10px; }
+    .status { color: var(--muted); font-size: 13px; }
+    button, select, input {
+      font: inherit;
+      color: var(--text);
+    }
+    button {
+      background: linear-gradient(180deg, #2a4d7c, #1d3558);
+      border: 1px solid #3d5f8a;
+      padding: 9px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button.ghost { background: transparent; }
+    button.primary { background: linear-gradient(180deg, #c9a56d, #9a7440); border-color: #e0c48d; color: #1a1208; font-weight: 600; }
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr 380px;
+      height: calc(100vh - 58px);
+    }
+    aside, .news {
+      overflow: auto;
+      padding: 12px;
+      background: rgba(8,16,24,.55);
+      border-right: 1px solid var(--line);
+    }
+    .news { border-right: none; border-left: 1px solid var(--line); }
+    .filters { display: grid; gap: 8px; margin-bottom: 10px; }
+    input, select {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0d1828;
+    }
+    .country {
+      display: grid;
+      grid-template-columns: 18px 36px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .country:hover, .country.active { background: #152538; }
+    .country img { width: 36px; height: 24px; object-fit: cover; border-radius: 3px; }
+    .country small { color: var(--muted); }
+    .visa {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      margin-left: 6px;
+    }
+    .visa.ok { background: rgba(62,207,142,.15); color: var(--ok); }
+    .visa.warn { background: rgba(224,176,74,.15); color: var(--warn); }
+    .visa.bad { background: rgba(239,107,107,.15); color: var(--bad); }
+    #map { height: 100%; }
+    .card {
+      background: #101b2c;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .card img { width: 100%; border-radius: 10px; margin: 8px 0; max-height: 140px; object-fit: cover; }
+    .card a { color: var(--blue); }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .tag { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #1b2c44; color: #c5d4ea; }
+    .overlay {
+      position: fixed; inset: 0; background: rgba(4,8,14,.72);
+      display: none; align-items: center; justify-content: center;
+      padding: 24px; z-index: 2000;
+    }
+    .overlay.show { display: flex; }
+    .modal, .compare-box {
+      width: min(1000px, 96vw);
+      max-height: 90vh;
+      overflow: auto;
+      background: #0e1828;
+      border: 1px solid #355070;
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+    .modal-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .modal-head img { width: 72px; height: 48px; object-fit: cover; border-radius: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+    .stat {
+      background: #122033;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .stat b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; }
+    th { color: var(--brass); font-weight: 600; }
+    .leaflet-popup-content-wrapper { background: #122033; color: #eef3fb; }
+    .compare-selects { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; height: auto; }
+      #map { height: 420px; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      .compare-selects { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>IR Explorer</h1>
+      <span>Xalqaro tahlil</span>
+    </div>
+    <div class="actions">
+      <div class="status" id="status">Yuklanmoqda…</div>
+      <button class="primary" id="btnCompare">Solishtirish</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <div class="filters">
+        <input id="search" placeholder="Davlat, poytaxt yoki kod…" />
+        
+        <!-- Xalqaro tashkilotlar va Bloklar bo'yicha filtr menyusi -->
+        <select id="orgFilter">
+          <option value="">Barcha tashkilotlar / Bloklar</option>
+          <option value="NATO">NATO (Shimoliy Atlantika Bloki)</option>
+          <option value="BRICS">BRICS (Iqtisodiy Alyans)</option>
+          <option value="SCO">SHXT (Shanxay Hamkorligi)</option>
+          <option value="OTS">TDT (Turk Davlatlari Tashkiloti)</option>
+          <option value="EU">YEI (Yevropa Ittifoqi)</option>
+          <option value="G7">G7 (Katta Yettilik)</option>
+          <option value="CSTO">KXShT (Harbiy Blok)</option>
+        </select>
+
+        <select id="region">
+          <option value="">Barcha regionlar</option>
+        </select>
+        <select id="visa">
+          <option value="">Barcha viza turlari</option>
+          <option>Vizasiz</option>
+          <option>e-Visa</option>
+          <option>Kelganda viza</option>
+          <option>Viza kerak</option>
+          <option>Mahalliy</option>
+        </select>
+      </div>
+      <div id="list"></div>
+    </aside>
+    <div id="map"></div>
+    <section class="news">
+      <h2 style="margin:6px 0 12px;font-family:Fraunces,serif;font-size:20px;">Yangiliklar va AI tahlil</h2>
+      <div id="news"></div>
+    </section>
+  </div>
+
+  <div class="overlay" id="modalOverlay">
+    <div class="modal" id="modal"></div>
+  </div>
+  <div class="overlay" id="compareOverlay">
+    <div class="compare-box" id="compareBox"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map", { worldCopyJump: true }).setView([25, 40], 2.4);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 8,
+      attribution: "&copy; OpenStreetMap &copy; CARTO",
+    }).addTo(map);
+
+    const markers = {};
+    let countries = [];
+    let selected = new Set();
+    let compareCodes = ["UZB", "USA", "CHN", "TUR"];
+
+    const visaClass = (v) => {
+      if (v === "Vizasiz" || v === "Mahalliy") return "ok";
+      if (v === "e-Visa" || v === "Kelganda viza") return "warn";
+      return "bad";
+    };
+    const fmt = (n) => n == null ? "—" : Number(n).toLocaleString("uz-UZ");
+    const gdp = (n) => n == null ? "—" : `$${Number(n).toLocaleString("uz-UZ")} mlrd`;
+    const money = (n) => n == null ? "—" : `$${Number(n).toLocaleString("uz-UZ")}`;
+
+    function filtered() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const org = document.getElementById("orgFilter").value;
+      const region = document.getElementById("region").value;
+      const visa = document.getElementById("visa").value;
+
+      return countries.filter((c) => {
+        const hay = `${c.name} ${c.capital || ""} ${c.cca3}`.toLowerCase();
+        const matchesQ = !q || hay.includes(q);
+        const matchesRegion = !region || c.region === region;
+        const matchesVisa = !visa || c.visa_type === visa;
+        
+        // Tashkilotlar bo'yicha filtrlash
+        const orgsStr = c.rel_uz || "";
+        const matchesOrg = !org || orgsStr.includes(org);
+
+        return matchesQ && matchesRegion && matchesVisa && matchesOrg;
+      });
+    }
+
+    function renderList() {
+      const items = filtered();
+      
+      // Xaritadagi belgilarni sinxron yangilash (filtrlanganlarni ko'rsatish)
+      const activeCodes = new Set(items.map(c => c.cca3));
+      Object.keys(markers).forEach(code => {
+        if (activeCodes.has(code)) {
+          markers[code].addTo(map);
+        } else {
+          map.removeLayer(markers[code]);
+        }
+      });
+
+      document.getElementById("list").innerHTML = items.map((c) => `
+        <div class="country ${selected.has(c.cca3) ? "active" : ""}" data-cca3="${c.cca3}">
+          <input type="checkbox" ${selected.has(c.cca3) ? "checked" : ""} data-check="${c.cca3}" />
+          <img src="${c.flag_png || ""}" alt="" />
+          <div>
+            <div>${c.name}<span class="visa ${visaClass(c.visa_type)}">${c.visa_type || "—"}</span></div>
+            <small>${c.capital || "Poytaxt yo'q"} · ${c.region || ""}</small>
+          </div>
+        </div>
+      `).join("");
+
+      document.querySelectorAll(".country").forEach((el) => {
+        el.addEventListener("click", (e) => {
+          if (e.target.dataset.check != null || e.target.type === "checkbox") return;
+          const c = countries.find((x) => x.cca3 === el.dataset.cca3);
+          if (c) openModal(c);
+        });
+      });
+      document.querySelectorAll("[data-check]").forEach((box) => {
+        box.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const code = box.dataset.check;
+          if (box.checked) selected.add(code); else selected.delete(code);
+        });
+      });
+    }
+
+    function popupHtml(c) {
+      return `<b>${c.name}</b><br>${c.capital || "—"}<br><small>Batafsil uchun bosing</small>`;
+    }
+
+    function openModal(c) {
+      if (c.lat != null && c.lng != null) {
+        map.setView([c.lat, c.lng], 4);
+        markers[c.cca3]?.openPopup();
+      }
+      document.getElementById("modal").innerHTML = `
+        <div class="modal-head">
+          <div style="display:flex;gap:12px;align-items:center;">
+            <img src="${c.flag_png || ""}" alt="" />
+            <div>
+              <h2 style="margin:0;font-family:Fraunces,serif;">${c.name}</h2>
+              <div style="color:var(--muted)">${c.cca2} · ${c.cca3} · ${c.region || ""} / ${c.subregion || ""}</div>
+            </div>
+          </div>
+          <button class="ghost" id="closeModal">Yopish</button>
+        </div>
+        <div class="grid">
+          <div class="stat"><b>Poytaxt</b>${c.capital || "—"}</div>
+          <div class="stat"><b>Aholi</b>${fmt(c.population)}</div>
+          <div class="stat"><b>YIM (GDP)</b>${gdp(c.gdp_usd)}</div>
+          <div class="stat"><b>YIM / kishi</b>${money(c.gdp_per_capita)}</div>
+          <div class="stat"><b>Maydon</b>${fmt(c.area)} km²</div>
+          <div class="stat"><b>Viza (O‘zbekiston pasporti)</b><span class="visa ${visaClass(c.visa_type)}">${c.visa_type || "—"}</span></div>
+        </div>
+        <div class="grid">
+          <div class="stat"><b>Davlat rahbari</b>${c.leader || "—"}</div>
+          <div class="stat"><b>Boshqaruv shakli</b>${c.government || "—"}</div>
+          <div class="stat"><b>Barqarorlik</b>${c.stability_score ?? "—"} / 10</div>
+        </div>
+        <div class="card"><b>Siyosiy-iqtisodiy barqarorlik</b><p>${c.stability_note || "—"}</p></div>
+        <div class="grid">
+          <div class="stat"><b>Tashkilotlar va A'zolik</b>${c.rel_uz || "—"}</div>
+          <div class="stat"><b>AQSh bilan</b>${c.rel_us || "—"}</div>
+          <div class="stat"><b>Yevropa Ittifoqi bilan</b>${c.rel_eu || "—"}</div>
+        </div>
+      `;
+      document.getElementById("modalOverlay").classList.add("show");
+      document.getElementById("closeModal").onclick = closeModal;
+    }
+
+    function closeModal() {
+      document.getElementById("modalOverlay").classList.remove("show");
+    }
+
+    function renderCompareTable() {
+      const picked = compareCodes.map(code => countries.find(c => c.cca3 === code)).filter(Boolean);
+      
+      const rows = [
+        ["Bayroq", (c) => `<img src="${c.flag_png}" width="48" alt="">`],
+        ["Poytaxt", (c) => c.capital || "—"],
+        ["Aholi", (c) => fmt(c.population)],
+        ["YIM", (c) => gdp(c.gdp_usd)],
+        ["YIM / kishi", (c) => money(c.gdp_per_capita)],
+        ["Maydon, km²", (c) => fmt(c.area)],
+        ["Region", (c) => `${c.region || "—"}`],
+        ["Rahbar", (c) => c.leader || "—"],
+        ["Boshqaruv", (c) => c.government || "—"],
+        ["Viza", (c) => c.visa_type || "—"],
+        ["Tashkilotlar va Maqom", (c) => c.rel_uz || "—"],
+        ["Barqarorlik", (c) => `${c.stability_score ?? "—"} / 10`],
+        ["AQSh aloqasi", (c) => c.rel_us || "—"],
+        ["YEI aloqasi", (c) => c.rel_eu || "—"],
+      ];
+
+      document.getElementById("compareBox").innerHTML = `
+        <div class="modal-head">
+          <h2 style="margin:0;font-family:Fraunces,serif;">Davlatlarni solishtirish</h2>
+          <button class="ghost" id="closeCompare">Yopish</button>
+        </div>
+        <p style="color:var(--muted)">Solishtirish uchun istalgan 4 ta davlatni tanlang:</p>
+        
+        <div class="compare-selects">
+          ${[0, 1, 2, 3].map(i => `
+            <div>
+              <small style="color:var(--brass)">${i + 1}-davlat:</small>
+              <select class="c-select" data-idx="${i}">
+                <option value="">-- Tanlang --</option>
+                ${countries.map(c => `<option value="${c.cca3}" ${compareCodes[i] === c.cca3 ? 'selected' : ''}>${c.name}</option>`).join("")}
+              </select>
+            </div>
+          `).join("")}
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Ko'rsatkich</th>${picked.map((c) => `<th>${c.name}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${rows.map(([label, fn]) => `<tr><th>${label}</th>${picked.map((c) => `<td>${fn(c)}</td>`).join("")}</tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      document.getElementById("closeCompare").onclick = () => {
+        document.getElementById("compareOverlay").classList.remove("show");
+      };
+
+      document.querySelectorAll(".c-select").forEach(sel => {
+        sel.addEventListener("change", (e) => {
+          const idx = Number(e.target.dataset.idx);
+          compareCodes[idx] = e.target.value;
+          renderCompareTable();
+        });
+      });
+    }
+
+    function openCompare() {
+      if (selected.size > 0) {
+        compareCodes = Array.from(selected).slice(0, 4);
+      }
+      renderCompareTable();
+      document.getElementById("compareOverlay").classList.add("show");
+    }
+
+    async function loadCountries() {
+      const res = await fetch("/api/countries");
+      const payload = await res.json();
+      countries = payload.data || [];
+      document.getElementById("status").textContent = `${payload.count || 0} davlat bazadan ulangan`;
+      const regions = [...new Set(countries.map((c) => c.region).filter(Boolean))].sort();
+      const sel = document.getElementById("region");
+      regions.forEach((r) => {
+        const o = document.createElement("option");
+        o.value = r; o.textContent = r; sel.appendChild(o);
+      });
+      countries.forEach((c) => {
+        if (c.lat == null || c.lng == null) return;
+        const marker = L.circleMarker([c.lat, c.lng], {
+          radius: 5,
+          color: "#d4b483",
+          fillColor: "#6ea8ff",
+          fillOpacity: 0.85,
+          weight: 1,
+        }).addTo(map);
+        marker.bindPopup(popupHtml(c));
+        marker.on("click", () => openModal(c));
+        markers[c.cca3] = marker;
+      });
+      renderList();
+    }
+
+    async function loadNews() {
+      const box = document.getElementById("news");
+      try {
+        const res = await fetch("/api/news");
+        const payload = await res.json();
+        const items = payload.results || [];
+        if (!items.length) {
+          box.innerHTML = "<p>Yangiliklar yo‘q. <code>python app.py</code> ni ishga tushiring.</p>";
+          return;
+        }
+        box.innerHTML = items.map((n) => {
+          const a = n.analysis || {};
+          return `
+            <article class="card">
+              ${n.image ? `<img src="${n.image}" alt="">` : ""}
+              <h3 style="margin:0 0 6px;font-size:16px;">${n.title}</h3>
+              <small>${n.published || payload.generated_at || ""} · ta’sir: ${a.impact || "—"}</small>
+              <div class="tags">${(a.tags || []).map((t) => `<span class="tag">${t}</span>`).join("")}</div>
+              <p style="color:var(--brass);margin:6px 0 8px;"><b>AI tahlil:</b> ${a.tone || ""}</p>
+              <p>${a.summary || (n.text || "").slice(0, 280)}</p>
+              <a href="${n.link}" target="_blank" rel="noopener">To‘liq o‘qish</a>
+            </article>`;
+        }).join("");
+      } catch {
+        box.innerHTML = "<p>Yangiliklarni yuklab bo‘lmadi.</p>";
+      }
+    }
+
+    document.getElementById("search").addEventListener("input", renderList);
+    document.getElementById("orgFilter").addEventListener("change", renderList);
+    document.getElementById("region").addEventListener("change", renderList);
+    document.getElementById("visa").addEventListener("change", renderList);
+    document.getElementById("btnCompare").addEventListener("click", openCompare);
+    document.getElementById("modalOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "modalOverlay") closeModal();
+    });
+    document.getElementById("compareOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "compareOverlay") e.currentTarget.classList.remove("show");
+    });
+
+    loadCountries().catch((err) => {
+      document.getElementById("status").textContent = "API xatosi: " + err;
+    });
+    loadNews();
+  </script>
+</body>
+</html>
